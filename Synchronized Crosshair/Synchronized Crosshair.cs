@@ -17,12 +17,35 @@ namespace cAlgo
 
         private string _chartKey;
 
+        private string _horizontalLineObjectName;
+
+        private string _verticalLineObjectName;
+
+        private string _lineObjectName;
+
+        private ChartHorizontalLine _horizontalLine;
+
+        private ChartVerticalLine _verticalLine;
+
+        private ChartTrendLine _line;
+
+        private DateTime _ctrlKeyUpTime;
+
+        private double _ctrlKeyUpPrice;
+
+        private bool _isActive;
+
+        private bool _isCtrlKeyUp;
+
         [Parameter("Mode", DefaultValue = Mode.All, Group = "General")]
         public Mode Mode { get; set; }
 
         protected override void Initialize()
         {
-            _chartKey = GetChartKey(this);
+            _chartKey = string.Format("{0}_{1}_{2}", SymbolName, TimeFrame, Chart.ChartType);
+            _horizontalLineObjectName = string.Format("{0}_Horizontal", _chartKey);
+            _verticalLineObjectName = string.Format("{0}_Vertical", _chartKey);
+            _lineObjectName = string.Format("{0}_Line", _chartKey);
 
             IndicatorInstanceContainer oldIndicatorContainer;
 
@@ -37,6 +60,35 @@ namespace cAlgo
 
             //Chart.ScrollChanged += Chart_ScrollChanged;
             Chart.MouseMove += Chart_MouseMove;
+            Chart.MouseDown += Chart_MouseDown;
+        }
+
+        private void Chart_MouseDown(ChartMouseEventArgs obj)
+        {
+            if (_isActive == false) return;
+
+            _isActive = false;
+
+            if (_horizontalLine != null)
+            {
+                Chart.RemoveObject(_horizontalLineObjectName);
+
+                _horizontalLine = null;
+            }
+
+            if (_verticalLine != null)
+            {
+                Chart.RemoveObject(_verticalLineObjectName);
+
+                _verticalLine = null;
+            }
+
+            if (_line != null)
+            {
+                Chart.RemoveObject(_lineObjectName);
+
+                _line = null;
+            }
         }
 
         private void Chart_MouseMove(ChartMouseEventArgs obj)
@@ -45,37 +97,50 @@ namespace cAlgo
 
             if (GetIndicatorInstanceContainer(_chartKey, out indicatorContainer) == false) return;
 
-            if (obj.CtrlKey == false)
+            if (_isActive && obj.CtrlKey == false)
             {
-                if (indicatorContainer.CrosshairHorizontalLine != null)
+                if (_isCtrlKeyUp == false)
                 {
-                    Chart.RemoveObject(indicatorContainer.CrosshairHorizontalLineObjectName);
+                    _isCtrlKeyUp = true;
+
+                    _ctrlKeyUpTime = obj.TimeValue;
+                    _ctrlKeyUpPrice = obj.YValue;
+
+                    return;
                 }
 
-                if (indicatorContainer.CrosshairVerticalLine != null)
+                if (_line == null)
                 {
-                    Chart.RemoveObject(indicatorContainer.CrosshairVerticalLineObjectName);
+                    _line = Chart.DrawTrendLine(_lineObjectName, _ctrlKeyUpTime, _ctrlKeyUpPrice, obj.TimeValue, obj.YValue, Chart.ColorSettings.ForegroundColor);
+                }
+                else
+                {
+                    _line.Time2 = obj.TimeValue;
+                    _line.Y2 = obj.YValue;
+                }
+            }
+            else if (obj.CtrlKey)
+            {
+                _isCtrlKeyUp = false;
+                _isActive = true;
+
+                if (_horizontalLine == null)
+                {
+                    _horizontalLine = Chart.DrawHorizontalLine(_horizontalLineObjectName, obj.YValue, Chart.ColorSettings.ForegroundColor);
+                }
+                else
+                {
+                    _horizontalLine.Y = obj.YValue;
                 }
 
-                return;
-            }
-
-            if (indicatorContainer.CrosshairHorizontalLine == null)
-            {
-                indicatorContainer.CrosshairHorizontalLine = Chart.DrawHorizontalLine(indicatorContainer.CrosshairHorizontalLineObjectName, obj.YValue, Chart.ColorSettings.ForegroundColor);
-            }
-            else
-            {
-                indicatorContainer.CrosshairHorizontalLine.Y = obj.YValue;
-            }
-
-            if (indicatorContainer.CrosshairVerticalLine == null)
-            {
-                indicatorContainer.CrosshairVerticalLine = Chart.DrawVerticalLine(indicatorContainer.CrosshairVerticalLineObjectName, obj.TimeValue, Chart.ColorSettings.ForegroundColor);
-            }
-            else
-            {
-                indicatorContainer.CrosshairVerticalLine.Time = obj.TimeValue;
+                if (_verticalLine == null)
+                {
+                    _verticalLine = Chart.DrawVerticalLine(_verticalLineObjectName, obj.TimeValue, Chart.ColorSettings.ForegroundColor);
+                }
+                else
+                {
+                    _verticalLine.Time = obj.TimeValue;
+                }
             }
         }
 
@@ -178,11 +243,6 @@ namespace cAlgo
             }
         }
 
-        private string GetChartKey(Indicator indicator)
-        {
-            return string.Format("{0}_{1}_{2}", indicator.SymbolName, indicator.TimeFrame, indicator.Chart.ChartType);
-        }
-
         private bool GetIndicatorInstanceContainer(string chartKey, out IndicatorInstanceContainer indicatorContainer)
         {
             if (_indicatorInstances.TryGetValue(chartKey, out indicatorContainer))
@@ -207,53 +267,12 @@ namespace cAlgo
     {
         private readonly WeakReference _indicatorWeakReference;
 
-        private readonly string _key;
-
-        private readonly string _crosshairHorizontalLineObjectName;
-
-        private readonly string _crosshairVerticalLineObjectName;
-
         public IndicatorInstanceContainer(SynchronizedCrosshair indicator)
         {
             _indicatorWeakReference = new WeakReference(indicator);
-
-            _key = string.Format("{0}_{1}_{2}", indicator.SymbolName, indicator.TimeFrame, indicator.Chart.ChartType);
-
-            _crosshairHorizontalLineObjectName = string.Format("{0}_Horizontal", _key);
-            _crosshairVerticalLineObjectName = string.Format("{0}_Vertical", _key);
-        }
-
-        public string Key
-        {
-            get
-            {
-                return _key;
-            }
-        }
-
-        public string CrosshairHorizontalLineObjectName
-        {
-            get
-            {
-                return _crosshairHorizontalLineObjectName;
-            }
-        }
-
-        public string CrosshairVerticalLineObjectName
-        {
-            get
-            {
-                return _crosshairVerticalLineObjectName;
-            }
         }
 
         public DateTime? TimeToScroll { get; set; }
-
-        public ChartHorizontalLine CrosshairHorizontalLine { get; set; }
-
-        public ChartVerticalLine CrosshairVerticalLine { get; set; }
-
-        public bool IsActive { get; set; }
 
         public bool GetIndicator(out SynchronizedCrosshair indicator)
         {
