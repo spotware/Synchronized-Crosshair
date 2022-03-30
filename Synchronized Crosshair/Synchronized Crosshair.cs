@@ -1,6 +1,6 @@
 ﻿using cAlgo.API;
-using System.Collections.Concurrent;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 
 namespace cAlgo
@@ -58,7 +58,7 @@ namespace cAlgo
 
             _indicatorInstances.AddOrUpdate(_chartKey, new IndicatorInstanceContainer(this), (key, value) => new IndicatorInstanceContainer(this));
 
-            _dataBoxControl = new DataBoxControl 
+            _dataBoxControl = new DataBoxControl
             {
                 HorizontalAlignment = DataBoxHorizontalAlignment,
                 VerticalAlignment = DataBoxVerticalAlignment,
@@ -194,8 +194,8 @@ namespace cAlgo
                 case Mode.TimeFrame:
                     predicate = indicator => indicator.TimeFrame == TimeFrame;
                     break;
-                default:
 
+                default:
 
                     predicate = null;
                     break;
@@ -228,10 +228,21 @@ namespace cAlgo
             {
                 try
                 {
-                    var indicatorChartTopToBottomDiff = indicator.Value.Chart.TopY - indicator.Value.Chart.BottomY;
-                    var yValue = indicator.Value.Chart.BottomY + (indicatorChartTopToBottomDiff * percent);
+                    double yValue;
+
+                    if (indicator.Value.SymbolName.Equals(SymbolName, StringComparison.Ordinal))
+                    {
+                        yValue = mouseEventArgs.YValue;
+                    }
+                    else
+                    {
+                        var indicatorChartTopToBottomDiff = indicator.Value.Chart.TopY - indicator.Value.Chart.BottomY;
+                        yValue = indicator.Value.Chart.BottomY + (indicatorChartTopToBottomDiff * percent);
+                    }
+
                     indicator.Value.BeginInvokeOnMainThread(() => indicator.Value.ShowCrosshair(mouseEventArgs.TimeValue, yValue, mouseEventArgs.CtrlKey));
-                } catch (Exception)
+                }
+                catch (Exception)
                 {
                     IndicatorInstanceContainer instanceContainer;
 
@@ -249,7 +260,8 @@ namespace cAlgo
                 try
                 {
                     indicator.Value.BeginInvokeOnMainThread(() => indicator.Value.OnMouseDown());
-                } catch (Exception)
+                }
+                catch (Exception)
                 {
                     IndicatorInstanceContainer instanceContainer;
 
@@ -306,25 +318,25 @@ namespace cAlgo
 
         public DataBoxControl()
         {
-            _panel.AddChild(new TextBox 
+            _panel.AddChild(new TextBox
             {
                 Text = "Time"
             }, 0, 0);
             _panel.AddChild(_timeTextBox, 0, 1);
 
-            _panel.AddChild(new TextBox 
+            _panel.AddChild(new TextBox
             {
                 Text = "Pips"
             }, 1, 0);
             _panel.AddChild(_pipsTextBox, 1, 1);
 
-            _panel.AddChild(new TextBox 
+            _panel.AddChild(new TextBox
             {
                 Text = "Periods"
             }, 2, 0);
             _panel.AddChild(_periodsTextBox, 2, 1);
 
-            _panel.AddChild(new TextBox 
+            _panel.AddChild(new TextBox
             {
                 Text = "Price"
             }, 3, 0);
