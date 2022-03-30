@@ -2,7 +2,6 @@
 using System.Collections.Concurrent;
 using System;
 using System.Collections.Generic;
-using System.Threading;
 
 namespace cAlgo
 {
@@ -10,10 +9,6 @@ namespace cAlgo
     public class SynchronizedCrosshair : Indicator
     {
         private static ConcurrentDictionary<string, IndicatorInstanceContainer> _indicatorInstances = new ConcurrentDictionary<string, IndicatorInstanceContainer>();
-
-        private static int _numberOfChartsToScroll;
-
-        private DateTime _lastScrollTime;
 
         private string _chartKey;
 
@@ -29,16 +24,30 @@ namespace cAlgo
 
         private ChartTrendLine _line;
 
-        private DateTime _ctrlKeyUpTime;
+        private DateTime _lastMouseLocationTime;
 
-        private double _ctrlKeyUpPrice;
+        private double _lastMouseLocationPrice;
 
         private bool _isActive;
 
-        private bool _isCtrlKeyUp;
+        private DateTime _lastMoveTime;
+
+        private DataBoxControl _dataBoxControl;
 
         [Parameter("Mode", DefaultValue = Mode.All, Group = "General")]
         public Mode Mode { get; set; }
+
+        [Parameter("Horizontal Alignment", DefaultValue = HorizontalAlignment.Right, Group = "Data Box")]
+        public HorizontalAlignment DataBoxHorizontalAlignment { get; set; }
+
+        [Parameter("Vertical Alignment", DefaultValue = VerticalAlignment.Bottom, Group = "Data Box")]
+        public VerticalAlignment DataBoxVerticalAlignment { get; set; }
+
+        [Parameter("Opacity", DefaultValue = 0.8, MinValue = 0, MaxValue = 1, Group = "Data Box")]
+        public double DataBoxOpacity { get; set; }
+
+        [Parameter("Margin", DefaultValue = 1, MinValue = 0, Group = "Data Box")]
+        public double DataBoxMargin { get; set; }
 
         protected override void Initialize()
         {
@@ -47,26 +56,29 @@ namespace cAlgo
             _verticalLineObjectName = string.Format("{0}_Vertical", _chartKey);
             _lineObjectName = string.Format("{0}_Line", _chartKey);
 
-            IndicatorInstanceContainer oldIndicatorContainer;
-
-            GetIndicatorInstanceContainer(_chartKey, out oldIndicatorContainer);
-
             _indicatorInstances.AddOrUpdate(_chartKey, new IndicatorInstanceContainer(this), (key, value) => new IndicatorInstanceContainer(this));
 
-            if (oldIndicatorContainer != null && oldIndicatorContainer.TimeToScroll.HasValue)
+            _dataBoxControl = new DataBoxControl
             {
-                //ScrollXTo(oldIndicatorContainer.Data.Value);
-            }
+                HorizontalAlignment = DataBoxHorizontalAlignment,
+                VerticalAlignment = DataBoxVerticalAlignment,
+                Opacity = DataBoxOpacity,
+                IsVisible = false,
+                Margin = DataBoxMargin
+            };
 
-            //Chart.ScrollChanged += Chart_ScrollChanged;
+            Chart.AddControl(_dataBoxControl);
+
             Chart.MouseMove += Chart_MouseMove;
             Chart.MouseDown += Chart_MouseDown;
         }
 
-        private void Chart_MouseDown(ChartMouseEventArgs obj)
+        public override void Calculate(int index)
         {
-            if (_isActive == false) return;
+        }
 
+        public void OnMouseDown()
+        {
             _isActive = false;
 
             if (_horizontalLine != null)
@@ -89,135 +101,104 @@ namespace cAlgo
 
                 _line = null;
             }
+
+            _dataBoxControl.IsVisible = false;
         }
 
-        private void Chart_MouseMove(ChartMouseEventArgs obj)
+        public void ShowCrosshair(DateTime timeValue, double yValue, bool ctrlKey)
         {
-            IndicatorInstanceContainer indicatorContainer;
-
-            if (GetIndicatorInstanceContainer(_chartKey, out indicatorContainer) == false) return;
-
-            if (_isActive && obj.CtrlKey == false)
+            if (_isActive && ctrlKey == false)
             {
-                if (_isCtrlKeyUp == false)
-                {
-                    _isCtrlKeyUp = true;
-
-                    _ctrlKeyUpTime = obj.TimeValue;
-                    _ctrlKeyUpPrice = obj.YValue;
-
-                    return;
-                }
-
                 if (_line == null)
                 {
-                    _line = Chart.DrawTrendLine(_lineObjectName, _ctrlKeyUpTime, _ctrlKeyUpPrice, obj.TimeValue, obj.YValue, Chart.ColorSettings.ForegroundColor);
+                    _line = Chart.DrawTrendLine(_lineObjectName, _lastMouseLocationTime, _lastMouseLocationPrice, timeValue, yValue, Chart.ColorSettings.ForegroundColor);
                 }
                 else
                 {
-                    _line.Time2 = obj.TimeValue;
-                    _line.Y2 = obj.YValue;
+                    _line.Time2 = timeValue;
+                    _line.Y2 = yValue;
                 }
+
+                var timeValueOffset = new DateTimeOffset(timeValue, TimeSpan.FromSeconds(0));
+
+                _dataBoxControl.Time = timeValueOffset.ToOffset(Application.UserTimeOffset).ToString("dd/MM/yyyy HH:mm");
+                _dataBoxControl.Pips = Math.Round(GetInPips(Math.Abs(_line.Y2 - _line.Y1)), 2).ToString();
+                _dataBoxControl.Periods = Math.Abs(Bars.OpenTimes.GetIndexByTime(_line.Time1) - Bars.OpenTimes.GetIndexByTime(_line.Time2)).ToString();
+                _dataBoxControl.Price = Math.Round(yValue, Symbol.Digits).ToString();
+                _dataBoxControl.IsVisible = true;
             }
-            else if (obj.CtrlKey)
+            else if (ctrlKey)
             {
-                _isCtrlKeyUp = false;
                 _isActive = true;
 
                 if (_horizontalLine == null)
                 {
-                    _horizontalLine = Chart.DrawHorizontalLine(_horizontalLineObjectName, obj.YValue, Chart.ColorSettings.ForegroundColor);
+                    _horizontalLine = Chart.DrawHorizontalLine(_horizontalLineObjectName, yValue, Chart.ColorSettings.ForegroundColor);
                 }
                 else
                 {
-                    _horizontalLine.Y = obj.YValue;
+                    _horizontalLine.Y = yValue;
                 }
 
                 if (_verticalLine == null)
                 {
-                    _verticalLine = Chart.DrawVerticalLine(_verticalLineObjectName, obj.TimeValue, Chart.ColorSettings.ForegroundColor);
+                    _verticalLine = Chart.DrawVerticalLine(_verticalLineObjectName, timeValue, Chart.ColorSettings.ForegroundColor);
                 }
                 else
                 {
-                    _verticalLine.Time = obj.TimeValue;
+                    _verticalLine.Time = timeValue;
                 }
             }
+
+            _lastMouseLocationTime = timeValue;
+            _lastMouseLocationPrice = yValue;
         }
 
-        public override void Calculate(int index)
+        private double GetInPips(double price)
         {
+            return price * (Symbol.TickSize / Symbol.PipSize * Math.Pow(10, Symbol.Digits));
         }
 
-        public void ScrollXTo(DateTime time)
+        private void Chart_MouseDown(ChartMouseEventArgs obj)
         {
-            IndicatorInstanceContainer indicatorContainer;
+            if (_isActive == false) return;
 
-            if (GetIndicatorInstanceContainer(_chartKey, out indicatorContainer))
-            {
-                indicatorContainer.TimeToScroll = time;
-            }
+            OnMouseDown();
 
-            if (Bars[0].OpenTime > time)
-            {
-                LoadMoreHistory();
-            }
-            else
-            {
-                Chart.ScrollXTo(time);
-            }
+            TriggerOnMouseDownOnCharts();
         }
 
-        private void LoadMoreHistory()
+        private void Chart_MouseMove(ChartMouseEventArgs obj)
         {
-            var numberOfLoadedBars = Bars.LoadMoreHistory();
+            if (Server.TimeInUtc - _lastMoveTime < TimeSpan.FromMilliseconds(1)) return;
 
-            if (numberOfLoadedBars == 0)
-            {
-                Chart.DrawStaticText("ScrollError", "Synchronized Crosshair: Can't load more data to keep in sync with other charts as more historical data is not available for this chart", VerticalAlignment.Bottom, HorizontalAlignment.Left, Color.Red);
-            }
+            _lastMoveTime = Server.TimeInUtc;
+
+            ShowCrosshair(obj.TimeValue, obj.YValue, obj.CtrlKey);
+
+            ShowCrosshairOnCharts(obj);
         }
 
-        private void Chart_ScrollChanged(ChartScrollEventArgs obj)
+        private List<KeyValuePair<string, SynchronizedCrosshair>> GetIndicators()
         {
-            IndicatorInstanceContainer indicatorContainer;
-
-            if (GetIndicatorInstanceContainer(_chartKey, out indicatorContainer))
-            {
-                indicatorContainer.TimeToScroll = null;
-            }
-
-            if (_numberOfChartsToScroll > 0)
-            {
-                Interlocked.Decrement(ref _numberOfChartsToScroll);
-
-                return;
-            }
-
-            var firstBarTime = obj.Chart.Bars.OpenTimes[obj.Chart.FirstVisibleBarIndex];
-
-            if (_lastScrollTime == firstBarTime) return;
-
-            _lastScrollTime = firstBarTime;
+            Func<SynchronizedCrosshair, bool> predicate;
 
             switch (Mode)
             {
                 case Mode.Symbol:
-                    ScrollCharts(firstBarTime, indicator => indicator.SymbolName.Equals(SymbolName, StringComparison.Ordinal));
+                    predicate = indicator => indicator.SymbolName.Equals(SymbolName, StringComparison.Ordinal);
                     break;
 
                 case Mode.TimeFrame:
-                    ScrollCharts(firstBarTime, indicator => indicator.TimeFrame == TimeFrame);
+                    predicate = indicator => indicator.TimeFrame == TimeFrame;
                     break;
 
                 default:
-                    ScrollCharts(firstBarTime);
+                    predicate = null;
                     break;
             }
-        }
 
-        private void ScrollCharts(DateTime firstBarTime, Func<Indicator, bool> predicate = null)
-        {
-            var toScroll = new List<SynchronizedCrosshair>(_indicatorInstances.Values.Count);
+            var result = new List<KeyValuePair<string, SynchronizedCrosshair>>(_indicatorInstances.Values.Count);
 
             foreach (var indicatorContianer in _indicatorInstances)
             {
@@ -225,34 +206,55 @@ namespace cAlgo
 
                 if (indicatorContianer.Value.GetIndicator(out indicator) == false || indicator == this || (predicate != null && predicate(indicator) == false)) continue;
 
-                toScroll.Add(indicator);
+                result.Add(new KeyValuePair<string, SynchronizedCrosshair>(indicatorContianer.Key, indicator));
             }
 
-            Interlocked.CompareExchange(ref _numberOfChartsToScroll, toScroll.Count, _numberOfChartsToScroll);
+            return result;
+        }
 
-            foreach (var indicator in toScroll)
+        private void ShowCrosshairOnCharts(ChartMouseEventArgs mouseEventArgs)
+        {
+            var indicators = GetIndicators();
+
+            var topToBottomDiff = Chart.TopY - Chart.BottomY;
+            var diff = mouseEventArgs.YValue - Chart.BottomY;
+            var percent = diff / topToBottomDiff;
+
+            foreach (var indicator in indicators)
             {
                 try
                 {
-                    indicator.ScrollXTo(firstBarTime);
+                    var indicatorChartTopToBottomDiff = indicator.Value.Chart.TopY - indicator.Value.Chart.BottomY;
+                    var yValue = indicator.Value.Chart.BottomY + (indicatorChartTopToBottomDiff * percent);
+
+                    indicator.Value.ShowCrosshair(mouseEventArgs.TimeValue, yValue, mouseEventArgs.CtrlKey);
                 }
                 catch (Exception)
                 {
-                    Interlocked.Decrement(ref _numberOfChartsToScroll);
+                    IndicatorInstanceContainer instanceContainer;
+
+                    _indicatorInstances.TryRemove(indicator.Key, out instanceContainer);
                 }
             }
         }
 
-        private bool GetIndicatorInstanceContainer(string chartKey, out IndicatorInstanceContainer indicatorContainer)
+        private void TriggerOnMouseDownOnCharts()
         {
-            if (_indicatorInstances.TryGetValue(chartKey, out indicatorContainer))
+            var indicators = GetIndicators();
+
+            foreach (var indicator in indicators)
             {
-                return true;
+                try
+                {
+                    indicator.Value.OnMouseDown();
+                }
+                catch (Exception)
+                {
+                    IndicatorInstanceContainer instanceContainer;
+
+                    _indicatorInstances.TryRemove(indicator.Key, out instanceContainer);
+                }
             }
-
-            indicatorContainer = null;
-
-            return false;
         }
     }
 
@@ -286,6 +288,84 @@ namespace cAlgo
             indicator = null;
 
             return false;
+        }
+    }
+
+    public class DataBoxControl : CustomControl
+    {
+        private readonly Grid _panel = new Grid(4, 2);
+
+        private readonly TextBox _timeTextBox = new TextBox();
+
+        private readonly TextBox _pipsTextBox = new TextBox();
+
+        private readonly TextBox _periodsTextBox = new TextBox();
+
+        private readonly TextBox _priceTextBox = new TextBox();
+
+        public DataBoxControl()
+        {
+            _panel.AddChild(new TextBox { Text = "Time" }, 0, 0);
+            _panel.AddChild(_timeTextBox, 0, 1);
+
+            _panel.AddChild(new TextBox { Text = "Pips" }, 1, 0);
+            _panel.AddChild(_pipsTextBox, 1, 1);
+
+            _panel.AddChild(new TextBox { Text = "Periods" }, 2, 0);
+            _panel.AddChild(_periodsTextBox, 2, 1);
+
+            _panel.AddChild(new TextBox { Text = "Price" }, 3, 0);
+            _panel.AddChild(_priceTextBox, 3, 1);
+
+            AddChild(_panel);
+        }
+
+        public string Time
+        {
+            set
+            {
+                _timeTextBox.Text = value;
+            }
+            get
+            {
+                return _timeTextBox.Text;
+            }
+        }
+
+        public string Pips
+        {
+            set
+            {
+                _pipsTextBox.Text = value;
+            }
+            get
+            {
+                return _pipsTextBox.Text;
+            }
+        }
+
+        public string Periods
+        {
+            set
+            {
+                _periodsTextBox.Text = value;
+            }
+            get
+            {
+                return _periodsTextBox.Text;
+            }
+        }
+
+        public string Price
+        {
+            set
+            {
+                _priceTextBox.Text = value;
+            }
+            get
+            {
+                return _priceTextBox.Text;
+            }
         }
     }
 }
