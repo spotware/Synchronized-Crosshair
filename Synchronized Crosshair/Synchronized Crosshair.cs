@@ -51,14 +51,14 @@ namespace cAlgo
 
         protected override void Initialize()
         {
-            _chartKey = string.Format("{0}_{1}_{2}", SymbolName, TimeFrame, Chart.ChartType);
+            _chartKey = string.Format("{0}_{1}_{2}_{3}", SymbolName, TimeFrame, Chart.ChartType, Server.Time.Ticks);
             _horizontalLineObjectName = string.Format("{0}_Horizontal", _chartKey);
             _verticalLineObjectName = string.Format("{0}_Vertical", _chartKey);
             _lineObjectName = string.Format("{0}_Line", _chartKey);
 
             _indicatorInstances.AddOrUpdate(_chartKey, new IndicatorInstanceContainer(this), (key, value) => new IndicatorInstanceContainer(this));
 
-            _dataBoxControl = new DataBoxControl
+            _dataBoxControl = new DataBoxControl 
             {
                 HorizontalAlignment = DataBoxHorizontalAlignment,
                 VerticalAlignment = DataBoxVerticalAlignment,
@@ -161,7 +161,8 @@ namespace cAlgo
 
         private void Chart_MouseDown(ChartMouseEventArgs obj)
         {
-            if (_isActive == false) return;
+            if (_isActive == false)
+                return;
 
             OnMouseDown();
 
@@ -170,7 +171,8 @@ namespace cAlgo
 
         private void Chart_MouseMove(ChartMouseEventArgs obj)
         {
-            if (Server.TimeInUtc - _lastMoveTime < TimeSpan.FromMilliseconds(1)) return;
+            if (Server.TimeInUtc - _lastMoveTime < TimeSpan.FromMilliseconds(1))
+                return;
 
             _lastMoveTime = Server.TimeInUtc;
 
@@ -192,8 +194,9 @@ namespace cAlgo
                 case Mode.TimeFrame:
                     predicate = indicator => indicator.TimeFrame == TimeFrame;
                     break;
-
                 default:
+
+
                     predicate = null;
                     break;
             }
@@ -204,7 +207,8 @@ namespace cAlgo
             {
                 SynchronizedCrosshair indicator;
 
-                if (indicatorContianer.Value.GetIndicator(out indicator) == false || indicator == this || (predicate != null && predicate(indicator) == false)) continue;
+                if (indicatorContianer.Value.GetIndicator(out indicator) == false || indicator == this || (predicate != null && predicate(indicator) == false))
+                    continue;
 
                 result.Add(new KeyValuePair<string, SynchronizedCrosshair>(indicatorContianer.Key, indicator));
             }
@@ -226,10 +230,8 @@ namespace cAlgo
                 {
                     var indicatorChartTopToBottomDiff = indicator.Value.Chart.TopY - indicator.Value.Chart.BottomY;
                     var yValue = indicator.Value.Chart.BottomY + (indicatorChartTopToBottomDiff * percent);
-
-                    indicator.Value.ShowCrosshair(mouseEventArgs.TimeValue, yValue, mouseEventArgs.CtrlKey);
-                }
-                catch (Exception)
+                    indicator.Value.BeginInvokeOnMainThread(() => indicator.Value.ShowCrosshair(mouseEventArgs.TimeValue, yValue, mouseEventArgs.CtrlKey));
+                } catch (Exception)
                 {
                     IndicatorInstanceContainer instanceContainer;
 
@@ -246,9 +248,8 @@ namespace cAlgo
             {
                 try
                 {
-                    indicator.Value.OnMouseDown();
-                }
-                catch (Exception)
+                    indicator.Value.BeginInvokeOnMainThread(() => indicator.Value.OnMouseDown());
+                } catch (Exception)
                 {
                     IndicatorInstanceContainer instanceContainer;
 
@@ -305,16 +306,28 @@ namespace cAlgo
 
         public DataBoxControl()
         {
-            _panel.AddChild(new TextBox { Text = "Time" }, 0, 0);
+            _panel.AddChild(new TextBox 
+            {
+                Text = "Time"
+            }, 0, 0);
             _panel.AddChild(_timeTextBox, 0, 1);
 
-            _panel.AddChild(new TextBox { Text = "Pips" }, 1, 0);
+            _panel.AddChild(new TextBox 
+            {
+                Text = "Pips"
+            }, 1, 0);
             _panel.AddChild(_pipsTextBox, 1, 1);
 
-            _panel.AddChild(new TextBox { Text = "Periods" }, 2, 0);
+            _panel.AddChild(new TextBox 
+            {
+                Text = "Periods"
+            }, 2, 0);
             _panel.AddChild(_periodsTextBox, 2, 1);
 
-            _panel.AddChild(new TextBox { Text = "Price" }, 3, 0);
+            _panel.AddChild(new TextBox 
+            {
+                Text = "Price"
+            }, 3, 0);
             _panel.AddChild(_priceTextBox, 3, 1);
 
             AddChild(_panel);
@@ -322,50 +335,26 @@ namespace cAlgo
 
         public string Time
         {
-            set
-            {
-                _timeTextBox.Text = value;
-            }
-            get
-            {
-                return _timeTextBox.Text;
-            }
+            get { return _timeTextBox.Text; }
+            set { _timeTextBox.Text = value; }
         }
 
         public string Pips
         {
-            set
-            {
-                _pipsTextBox.Text = value;
-            }
-            get
-            {
-                return _pipsTextBox.Text;
-            }
+            get { return _pipsTextBox.Text; }
+            set { _pipsTextBox.Text = value; }
         }
 
         public string Periods
         {
-            set
-            {
-                _periodsTextBox.Text = value;
-            }
-            get
-            {
-                return _periodsTextBox.Text;
-            }
+            get { return _periodsTextBox.Text; }
+            set { _periodsTextBox.Text = value; }
         }
 
         public string Price
         {
-            set
-            {
-                _priceTextBox.Text = value;
-            }
-            get
-            {
-                return _priceTextBox.Text;
-            }
+            get { return _priceTextBox.Text; }
+            set { _priceTextBox.Text = value; }
         }
     }
 }
